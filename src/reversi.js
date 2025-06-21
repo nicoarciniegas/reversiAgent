@@ -35,11 +35,28 @@ class RandomAgent extends Agent{
         var board = percept['board'] // Gets the current board's position
         var moves = board.valid_moves(color)
         var index = Math.floor(moves.length * Math.random())
-        for(var i=0; i<50000000; i++){} // Making it very slow to test time restriction
+        // for(var i=0; i<50000000; i++){} // Making it very slow to test time restriction
         return moves[index]
     }
 }
 
+
+class RandomAgent2 extends Agent{
+    constructor(){
+        super()
+    }
+
+    compute(percept){
+        var color = percept['color'] // Gets player's color
+        var wtime = percept['W'] // Gets remaining time of whites color player
+        var btime = percept['B'] // Gets remaining time of blacks color player
+        var board = percept['board'] // Gets the current board's position
+        var moves = board.valid_moves(color)
+        var index = Math.floor(moves.length * Math.random())
+        for(var i=0; i<1000000000; i++){} // Making it very slow to test time restriction
+        return moves[index]
+    }
+}
 /////////////////// ENVIRONMENT CLASSES AND DEFINITION /////////////////////////
 /*
 * Board class (Cannot be modified )
