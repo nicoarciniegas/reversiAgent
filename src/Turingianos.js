@@ -3,6 +3,8 @@ class TuringianosAgentV2 extends Agent{
         super()
         this.name = "Turingianos";
         this.turns = 0; // Counter
+        // Memoization cache
+        this.memoCache = new Map();
     }
     
     compute(percept){
@@ -14,28 +16,26 @@ class TuringianosAgentV2 extends Agent{
         var time_left = color == 'W' ? wtime : btime
         this.turns += 1 // Add 1 to the turn, usefull to guess if we are in early, mid or late game
         
-        if (time_left < 500) { // if we have no time, play random
+        if (time_left < 200) { // if we have no time, play random
             var index = Math.floor(moves.length * Math.random())
             return moves[index]
         }
 
-        if (time_left > 2000 && time_left < 4000) { // if we less time, we do less search (probably)
+        if (time_left > 2000 && time_left < 5000) { // if we less time, we do less search (probably)
             this.depth = 2;
         }
 
-        if (time_left > 500 && time_left < 2000) { // if we less time, we do less search (probably)
+        if (time_left > 200 && time_left < 2000) { // if we less time, we do less search (probably)
             this.depth = 1;
         }
 
-        if (time_left > 4000) { // Constructor is only called once, they dont restart our agent at play time
+        if (time_left > 5000) { // Constructor is only called once, they dont restart our agent at play time
             this.depth = 3;
         }
 
-        if (moves.length === 0) return null; // esto no deberia ser posible, el ambiente se asegura de ello.
-
         let bestScore = -Infinity;
         let bestMove = moves[0];
-
+        this.memoCache.clear(); // Reset cache for each new turn to avoid crashing memory (this should use 400mb of memory at maximum if we clear it every turn)
         // For each possible move, check negamax
         for (let move of moves) {
             let newBoard = this.simulateMove(board, move, color);
@@ -50,9 +50,23 @@ class TuringianosAgentV2 extends Agent{
     }
 
     negamax(board, color, depth, alpha, beta) {
+        // TODO: order moves by heuristic to improve performance
+        // TODO use a better and faster cache key, use hash of every board position
+        // TODO: better heuristic function, not just count pieces
+        // TODO: use transposition table to store already evaluated positions (horizontal flip and vertical flip)
+        // Generate a unique cache key (board + depth)
+        const cacheKey = JSON.stringify(board.board) + depth;
+
+        // Check if this position + depth is already memoized
+        if (this.memoCache.has(cacheKey)) {
+            return this.memoCache.get(cacheKey);
+        }
+
         let moves = board.valid_moves(color);
         if (depth === 0 || moves.length === 0) {
-            return this.evaluate(board, color);
+            const score = this.evaluate(board, color);
+            this.memoCache.set(cacheKey, score); // Store result
+            return score;
         }
 
         let maxScore = -Infinity;
@@ -68,6 +82,7 @@ class TuringianosAgentV2 extends Agent{
                 break; // Beta cut-off
             }
         }
+        this.memoCache.set(cacheKey, maxScore); // Store result
         return maxScore;
     }
 
