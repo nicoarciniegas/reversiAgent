@@ -664,7 +664,8 @@ class TuringianosAgentV4 extends Agent{
 }
 
 
-// alpha beta pruning, memoization and heuristic with grid weight, and movilization bonus 
+// alpha beta pruning, memoization and heuristic with grid weight, and movilization bonus, movement with moment, mas peso a los movimientos
+// cercanos, estrategia para forzar algun camino estrategicamente
 class TuringianosAgentV5 extends Agent{
     constructor(){
         super()
@@ -1177,6 +1178,7 @@ class TuringianosAgentV6 extends Agent{
         return color === 'B' ? 'W' : 'B';
     }
 }
+
 // alpha beta pruning, memoization and heuristic with grid weight,mobilization bonus, and transposition table
 class TuringianosAgentV7 extends Agent{
     constructor(){
@@ -1188,11 +1190,15 @@ class TuringianosAgentV7 extends Agent{
         this.depth = 3;
         // Memoization cache
         this.memoCache = new Map();
+        this.matrixHashNormal = []
+        this.matrixHashFlipH = []
+        this.matrixHashFlipV = []
+        // TODO rotaciones??
+        
     }
 
     initialize_agent(color, board) {
         console.log("Initializing agent again");
-        this.weight_grid = [];
         this.turns = 0; // Reset turns
         this.current_color = color; // Reset current color
         this.depth = 3; // Reset depth
@@ -1200,6 +1206,31 @@ class TuringianosAgentV7 extends Agent{
         // Memoization cache
         this.memoCache = new Map();
         console.log("Weight grid", this.weight_grid);
+        this.matrixHashNormal = this.generateMatrixHash(board)
+        this.matrixHashFlipH = this.flipMatrixH(this.matrixHashNormal)
+        this.matrixHashFlipV = this.flipMatrixV(this.matrixHashNormal)
+
+        console.log("hash grid", this.matrixHashNormal  );
+
+
+    }
+    generateMatrixHash(board){
+        let matrix = board.board; //Retorna el tablero actual como una matriz y no como objeto Board
+        // Conteo de piezas en el tablero
+        // Recorre la matriz y cuenta las piezas del jugador y del oponente
+        let rows = matrix.length;
+        let cols = matrix[0].length;
+        let count = 0;
+        let grid = []
+        for (let i = 0; i < rows; i++) {
+            let prow = [];
+            for (let j = 0; j < cols; j++) {
+                count += 1;
+                prow.push(count);
+            }
+            grid.push(prow);
+        }
+        return grid
     }
 
     /**
@@ -1218,10 +1249,10 @@ class TuringianosAgentV7 extends Agent{
         let rows = matrix.length;
         let cols = matrix[0].length;
         const maxDimension = Math.max(rows, cols);
-        let grid = Array.from({ length: rows }, () => Array(cols).fill(1)); // Initialize grid with ones
+        let grid = Array.from({ length: rows }, () => Array(cols).fill(0)); // Initialize grid with ones
         // Dynamic edge value (scales with board size)
-        const baseEdgeValue = 1;
-        const scaledEdgeValue = baseEdgeValue + Math.floor(Math.max(0, maxDimension - 10) * 0.25);
+        const baseEdgeValue = 2;
+        const scaledEdgeValue = baseEdgeValue + Math.floor(Math.max(0, maxDimension - 10));
         const edgeValue = Math.round(scaledEdgeValue); // Round to integer
         const scale = Math.max(1,maxDimension/10); // Scale factor for edge values
 
@@ -1229,7 +1260,7 @@ class TuringianosAgentV7 extends Agent{
             [0, 0], [0, cols - 1],
             [rows - 1, 0], [rows - 1, cols - 1]
         ];
-        corners.forEach(([i, j]) => grid[i][j] = 4 + 2 * scale); // Scale corner value
+        corners.forEach(([i, j]) => grid[i][j] = 10 + 2 * scale); // Scale corner value
 
         // X-Squares (always -5)
         
@@ -1283,16 +1314,10 @@ class TuringianosAgentV7 extends Agent{
         // Being greeedy (depth==1) brings better play, but prone error
         //if (time_left > time_lowerBound && time_left < time_upperBound) {
         if (time_left < time_upperBound) {
-            this.depth = 1;
+            this.depth = 3;
         }
         else if(time_left < time_lowerBound){
             this.depth = 0;
-        }
-        if (this.turns < 1) { // Strong opening - tuned to less than 7 turns
-            this.depth = 7; 
-        }
-        else if (this.turns < 5) { // Strong opening - tuned to less than 7 turns
-            this.depth = 3;
         }
         if (time_left < 69) {
             return moves[Math.floor(moves.length * Math.random())];
@@ -1300,7 +1325,7 @@ class TuringianosAgentV7 extends Agent{
 
         let bestScore = -Infinity;
         let bestMove = moves[0];
-        if (this.turns % 41 === 0) {
+        if (this.turns % 128 === 0) {
             this.memoCache.clear(); // Reset cache for each new turn to avoid crashing memory (this should use 400mb of memory at maximum if we clear it every turn)
         }
         // For each possible move, check negamax
@@ -1330,52 +1355,93 @@ class TuringianosAgentV7 extends Agent{
         return newMatrix;
     }
     // Flip a matrix horizontally
-    flip(matrix) {
+    flipMatrixH(matrix) {
         return matrix.map(row => row.slice().reverse());
     }
-    // Get the canonical hash of a board, considering all symmetries (rotations and flips).
-    getCanonicalHash(board) {
-        let currentMatrix = board.board;
-        const symmetries = [];
 
-        // Generate all 8 symmetries (4 rotations, and 4 rotations of a flipped version)
-        for (let i = 0; i < 4; i++) {
-            symmetries.push(currentMatrix.flat().join(''));
-            symmetries.push(this.flip(currentMatrix).flat().join(''));
-            currentMatrix = this.rotate(currentMatrix);
-        }
-
-        // Sort all 8 string representations alphabetically and return the first one.
-        symmetries.sort();
-        return symmetries[0];
+    // Flip a matrix vertically
+    flipMatrixV (matrix) {
+        return matrix.map(col => col.slice().reverse());
     }
-    // Get the board hash for memoization, using the canonical hash.
-    getBoardHash(board) {
-        return this.getCanonicalHash(board);
-    }   
+    
+    getBoardHashes(board, color) {
+        let matrix = board.board;
+        let rows = matrix.length;
+        let cols = matrix[0].length;
+        let hashes = [];
+        let hashN = new Array(rows * cols).fill(0);
+        let hashV = new Array(rows * cols).fill(0);
+        let hashH = new Array(rows * cols).fill(0);
+        let opp = this.opponent(color);
+        
+        for (let i = 0; i < rows; i++) {
+            for (let j = 0; j < cols; j++) {
+                if (matrix[i][j] === color) {
+                    let idx1 = this.matrixHashNormal[i][j];
+                    hashN[idx1] = 1;
+                    let idx2 = this.matrixHashFlipH[i][j];
+                    hashH[idx2] = 1;
+                    let idx3 = this.matrixHashFlipV[i][j];
+                    hashV[idx3] = 1;
+                    
+                } else if (matrix[i][j] === opp) {
+                    let idx1 = this.matrixHashNormal[i][j];
+                    hashN[idx1] = 2;
+                    let idx2 = this.matrixHashFlipH[i][j];
+                    hashH[idx2] = 2;
+                    let idx3 = this.matrixHashFlipV[i][j];
+                    hashV[idx3] = 2;
+                }
+            }
+        }
+        hashes.push(this.hashIntArray(hashN));
+        hashes.push(this.hashIntArray(hashH));
+        hashes.push(this.hashIntArray(hashV));
+        
+        return hashes;
+    }
 
+    // TODO pasar esta logica directo en el for de arriba para evitar mas sobrecarga
+    // por ahora esta acapara probar q funciona
+    hashIntArray(arr) {
+      let hash = 0;
+      const prime = 31; // A common prime number for hash functions
+
+      for (let i = 0; i < arr.length; i++) {
+        hash = (hash * prime + arr[i]) | 0; // Combine current hash with element, using bitwise OR 0 for 32-bit integer conversion
+      }
+
+      return hash;
+    }
 
     negamax(board, color, depth, alpha, beta) {
         // Uses the new, faster hashing function for the cache key.
-        const cacheKey = this.getBoardHash(board) + depth;
+        const cachesKeys = this.getBoardHashes(board,color) + depth;
 
-        if (this.memoCache.has(cacheKey)) {
-            return this.memoCache.get(cacheKey);
+        for (cacheKey in cachesKeys) {
+            if (this.memoCache.has(cacheKey)) {
+                return this.memoCache.get(cacheKey);
+            }   
         }
 
         let moves = board.valid_moves(color);
         if (depth === 0 || moves.length === 0) {
             const score = this.evaluate(board, color);
-            this.memoCache.set(cacheKey, score);
+            for (cacheKey in cachesKeys) {
+                this.memoCache.set(cacheKey, score);
+            }
             return score;
         }
 
         // Move Ordering Implementation
         // Sort moves based on the weight_grid value of the destination square.
         // This makes alpha-beta pruning much more effective.
+        //  TODO sortear esto con nuestra funcion evaluadora y luego evitar
+        // volver a evaluar lo mismo (o tal vez el cache lo arregla?)
+        // inicializar alpha y beta segun mejores scores de este sorteo
         moves.sort((a, b) => {
-            const scoreA = this.weight_grid[a.y][a.x];
-            const scoreB = this.weight_grid[b.y][b.x];
+            const scoreA = this.weight_grid[a.x][a.y];
+            const scoreB = this.weight_grid[b.x][b.y];
             return scoreB - scoreA; // Sort in descending order (best moves first)
         });
 
@@ -1395,7 +1461,9 @@ class TuringianosAgentV7 extends Agent{
             }
         }
         
-        this.memoCache.set(cacheKey, maxScore);
+        for (cacheKey in cachesKeys) {
+            this.memoCache.set(cacheKey, score);
+        }
         return maxScore;
     }
 
@@ -1409,23 +1477,41 @@ class TuringianosAgentV7 extends Agent{
         let score = 0;
         let rows = matrix.length;
         let cols = matrix[0].length;
+        let myPieces = 0;
+        let oppPieces = 0;
+        let myWeight = 0;
+        let oppWeight = 0;
         // Sum weights for all pieces
         for (let i = 0; i < rows; i++) {
             for (let j = 0; j < cols; j++) {
                 if (matrix[i][j] === color) {
-                    score += this.weight_grid[i][j]; // Add weight for player's piece
+                    myWeight += this.weight_grid[i][j]; // Add weight for player's piece
+                    myPieces += 1;
                 } else if (matrix[i][j] === opp) {
-                    score -= this.weight_grid[i][j]; // Subtract weight for opponent's piece
+                    oppWeight += this.weight_grid[i][j]; // Subtract weight for opponent's piece
+                    oppPieces += 1;
                 }
             }
         }
         
         const myMoves = board.valid_moves(color).length;
         const oppMoves = board.valid_moves(opp).length;
-        //console.log("My moves:", myMoves, "Opponent moves:", oppMoves);
-        const mobilityWeight = 5 * Math.max(1, Math.max(rows, cols) / 4);
+        let mobilityWeight = 5 * Math.max(1, Math.max(rows, cols) / 4);
+        const piecesWeigth = 1 * this.turns/30; // TODO cambiar este peso segun tamanio grilla
+        // TODO si el oponente tiene muchas piezas en early toca darle mas poder a posibles movimientos
+        
+        if (myMoves < 5){
+            mobilityWeight = 40 * Math.max(1, Math.max(rows, cols) / 4);
+        }
+        if (myMoves < 3){
+            mobilityWeight = 80 * Math.max(1, Math.max(rows, cols) / 4);
+        }
+        
+        const gridWeight = 2/ this.turns; // Todo mismo q arriba, aca con el tiempo pesa menos tomar una esquina
         score += mobilityWeight * (myMoves - oppMoves); // Mobility bonus, scaled by board size
-        //score += 1*(myMoves - oppMoves); // Mobility bonus
+        score += piecesWeigth * (myPieces - oppPieces);
+        score += gridWeight * (myWeight - oppWeight);
+
         
         return score;
     }
