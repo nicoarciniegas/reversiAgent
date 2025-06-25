@@ -1199,7 +1199,7 @@ class TuringianosAgentV7 extends Agent{
         this.weight_grid = this.generateWeightGrid(board); // Generate weight grid for the first time
         // Memoization cache
         this.memoCache = new Map();
-        console.log("Weight grid", this.weight_grid);
+        //console.log("Weight grid", this.weight_grid);
     }
 
     /**
