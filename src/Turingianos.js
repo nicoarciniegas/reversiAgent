@@ -537,7 +537,7 @@ class TuringianosAgentV4 extends Agent{
         if (this.current_color != color){
             this.initialize_agent(color,board);
         }
-        
+        /*
         if (time_left < 600) { // if we have no time, check only 1 move
             this.depth = 0;
         }
@@ -561,7 +561,7 @@ class TuringianosAgentV4 extends Agent{
         if (this.turns < 40) { // Early game, use less depth
             this.depth = 1; 
         }
-
+        */
         let bestScore = -Infinity;
         let bestMove = moves[0];
         if (this.turns % 2 === 0) {
@@ -1195,7 +1195,6 @@ class TuringianosAgentV7 extends Agent{
         this.matrixHashNormal = []
         this.matrixHashFlipH = []
         this.matrixHashFlipV = []
-        // TODO rotaciones si matriz es cuadrada
         
     }
 
@@ -1208,14 +1207,30 @@ class TuringianosAgentV7 extends Agent{
         // Memoization cache
         this.memoCache = new Map();
         console.log("Weight grid", this.weight_grid);
-        this.matrixHashNormal = this.generateMatrixHash(board)
-        this.matrixHashFlipH = this.flipMatrixH(this.matrixHashNormal)
-        this.matrixHashFlipV = this.flipMatrixV(this.matrixHashNormal)
+        this.matrixHashNormal = this.generateMatrixHash(board);
+        this.matrixHashFlipH = this.flipMatrixH(this.matrixHashNormal);
+        this.matrixHashFlipV = this.flipMatrixV(this.matrixHashNormal);
+        // just square matrix
+        this.matrixRotated90 = this.rotateMatrix(this.matrixHashNormal);
+        // can be rectangular (this is equivalent to flip horizontal vertical)
+        this.matrixRotated180 = this.rotateMatrix(this.matrixRotated90);
+        // just square matrix
+        this.matrixRotated270 = this.rotateMatrix(this.matrixRotated180);
+        // just square matrix
+        //Main Diagonal Flip = 90° rotation + vertical flip.
+        // Anti-Diagonal Flip = 270° rotation + vertical flip.
+        this.matrixDiagonalFlip = this.flipMatrixV(this.matrixRotated90);
+        this.matrixAntiDiagonalFlip = this.flipMatrixV(this.matrixRotated270);
 
         console.log("hash grid", this.matrixHashNormal  );
         console.log("hash grid flipH", this.matrixHashFlipH  );
         console.log("hash grid flipV", this.matrixHashFlipV  );
-
+        console.log("hash grid flipHV", this.matrixHashFlipHV  );
+        console.log("hash grid rotated90", this.matrixRotated90  );
+        console.log("hash grid rotated180", this.matrixRotated180  );
+        console.log("hash grid rotated270", this.matrixRotated270  );
+        console.log("hash grid diagonalFlip", this.matrixDiagonalFlip  );
+        console.log("hash grid antiDiagonalFlip", this.matrixAntiDiagonalFlip  );
 
     }
     generateMatrixHash(board){
@@ -1317,7 +1332,7 @@ class TuringianosAgentV7 extends Agent{
         }
         // Being greeedy (depth==1) brings better play, but prone error
         //if (time_left > time_lowerBound && time_left < time_upperBound) {
-        
+        /*
         if (this.turns > 20) { // just guessing number of turn in after aperture
             this.depth = 3;
         }
@@ -1331,6 +1346,7 @@ class TuringianosAgentV7 extends Agent{
         if (time_left < 100) { //caso extremo
             return moves[Math.floor(moves.length * Math.random())];
         }
+        */
         
         let bestScore = -Infinity;
         let bestMove = moves[0];
@@ -1352,7 +1368,7 @@ class TuringianosAgentV7 extends Agent{
     }
 
     // Rotate a matrix 90 degrees clockwise
-    rotate(matrix) {
+    rotateMatrix(matrix) {
         const n = matrix.length;
         const m = matrix[0].length;
         const newMatrix = Array.from({ length: m }, () => Array(n));
@@ -1381,6 +1397,11 @@ class TuringianosAgentV7 extends Agent{
         let hashN = 0;
         let hashV = 0;
         let hashH = 0;
+        let HashDiagonal = 0;
+        let HashAntiDiagonal = 0;
+        let hashRotated90 = 0;
+        let hashRotated180 = 0;
+        let hashRotated270 = 0;
         let opp = this.opponent(color);
         const prime = 31; // A common prime number for hash functions
 
@@ -1392,7 +1413,19 @@ class TuringianosAgentV7 extends Agent{
                     let idx2 = this.matrixHashFlipH[i][j];
                     hashH += (idx2 * prime);
                     let idx3 = this.matrixHashFlipV[i][j];
-                    hashV += (idx3 * prime); 
+                    hashV += (idx3 * prime);
+
+                    let idx5 = this.matrixDiagonalFlip[i][j];
+                    HashDiagonal += (idx5 * prime);
+                    let idx6 = this.matrixAntiDiagonalFlip[i][j];
+                    HashAntiDiagonal += (idx6 * prime);
+                    let idx7 = this.matrixRotated90[i][j];
+                    hashRotated90 += (idx7 * prime);
+                    let idx8 = this.matrixRotated180[i][j];
+                    hashRotated180 += (idx8 * prime);
+                    let idx9 = this.matrixRotated270[i][j];
+                    hashRotated270 += (idx9 * prime);
+
                     
                 } else if (matrix[i][j] === opp) {
                     let idx1 = this.matrixHashNormal[i][j];
@@ -1401,12 +1434,28 @@ class TuringianosAgentV7 extends Agent{
                     hashH += (idx2 * prime * 2 * 7);
                     let idx3 = this.matrixHashFlipV[i][j];
                     hashV += (idx3 * prime * 2 * 7); // multiply by 2 to differentiate opponent's pieces
+
+                    let idx5 = this.matrixDiagonalFlip[i][j];
+                    HashDiagonal += (idx5 * prime * 2 * 7);
+                    let idx6 = this.matrixAntiDiagonalFlip[i][j];
+                    HashAntiDiagonal += (idx6 * prime * 2 * 7);
+                    let idx7 = this.matrixRotated90[i][j];
+                    hashRotated90 += (idx7 * prime * 2 * 7);
+                    let idx8 = this.matrixRotated180[i][j];
+                    hashRotated180 += (idx8 * prime * 2 * 7);
+                    let idx9 = this.matrixRotated270[i][j];
+                    hashRotated270 += (idx9 * prime * 2 * 7);
                 }
             }
         }
         hashes.push(String(hashN) + 'D' + String(depth)); // Add depth to the hash for uniqueness
         hashes.push(String(hashH) +  'D' + String(depth));
         hashes.push(String(hashV) +  'D' + String(depth));
+        hashes.push(String(HashDiagonal) +  'D' + String(depth));
+        hashes.push(String(HashAntiDiagonal) +  'D' + String(depth));
+        hashes.push(String(hashRotated90) +  'D' + String(depth));
+        hashes.push(String(hashRotated180) +  'D' + String(depth));
+        hashes.push(String(hashRotated270) +  'D' + String(depth));
         return hashes;
     }
 
