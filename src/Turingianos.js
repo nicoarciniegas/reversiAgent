@@ -1741,26 +1741,27 @@ class TuringianosAgentV8 extends Agent{
         // Being greeedy (depth==1) brings better play, but prone error
         //if (time_left > time_lowerBound && time_left < time_upperBound) {
          if (time_left < 200) { // if we have no time, play random
-            this.depth = 1;
+            this.depth = 0;
         }
 
         if (time_left > 2000 && time_left < 5000) { // if we less time, we do less search (probably)
-            this.depth = 3;
-        }
-
-        if (time_left > 200 && time_left < 2000) { // if we less time, we do less search (probably)
             this.depth = 2;
         }
 
+        if (time_left > 200 && time_left < 2000) { // if we less time, we do less search (probably)
+            this.depth = 1;
+        }
+
         if (time_left > 5000) { // Constructor is only called once, they dont restart our agent at play time
-            this.depth = 5;
+            this.depth = 4;
         }
     
         
         
         let bestScore = -Infinity;
         let bestMove = moves[0];
-        if (this.turns % 20 === 0) {
+        
+        if (this.turns % this.depth === 0) {
             this.memoCache.clear(); // Reset cache for each new turn to avoid crashing memory (this should use 400mb of memory at maximum if we clear it every turn)
         }
 
@@ -1789,12 +1790,20 @@ class TuringianosAgentV8 extends Agent{
     }
     // Flip a matrix horizontally
     flipMatrixH(matrix) {
-        return matrix.map(row => row.slice().reverse());
+        const newMatrix = [];
+        for (let i = 0; i < matrix.length; i++) {
+            newMatrix.push([...matrix[i]]); // Shallow copy of inner array
+        }
+        return newMatrix.map(row => row.slice().reverse());
     }
 
     // Flip a matrix vertically
     flipMatrixV (matrix) {
-        return matrix.reverse();
+        const newMatrix = [];
+        for (let i = 0; i < matrix.length; i++) {
+            newMatrix.push([...matrix[i]]); // Shallow copy of inner array
+        }
+        return newMatrix.reverse();
     }
     
     getBoardHashes(board, color, depth) {
@@ -1857,19 +1866,28 @@ class TuringianosAgentV8 extends Agent{
             }
         }
         hashes.push(String(hashN) + 'D' + String(depth)  + color); // Add depth to the hash for uniqueness
+        
         hashes.push(String(hashH) +  'D' + String(depth) + color);
         hashes.push(String(hashV) +  'D' + String(depth) + color);
+        
+        /*
         hashes.push(String(HashDiagonal) +  'D' + String(depth) + color);
         hashes.push(String(HashAntiDiagonal) +  'D' + String(depth) + color);
+        
+
         hashes.push(String(hashRotated90) +  'D' + String(depth) + color);
         hashes.push(String(hashRotated180) +  'D' + String(depth) + color);
         hashes.push(String(hashRotated270) +  'D' + String(depth) + color);
+        */
+        
+        
+        
         return hashes;
     }
 
     negamax(board, color, depth, alpha, beta) {
         // Uses the new, faster hashing function for the cache key.
-        /*
+        
         const cachesKeys = this.getBoardHashes(board,color, depth) ;
         
         for (let i = 0; i < cachesKeys.length; i++) {
@@ -1877,15 +1895,15 @@ class TuringianosAgentV8 extends Agent{
                 // console.log("Cache hit for key:", cachesKeys[i], 'hashes ', cachesKeys);
                 return this.memoCache.get(cachesKeys[i]);
             }   
-        }*/
+        }
 
         let moves = board.valid_moves(color);
         if (depth === 0 || moves.length === 0) {
             const score = this.evaluate(board, color);
-            /*
+            
             for (let i = 0; i < cachesKeys.length; i++) {
                 this.memoCache.set(cachesKeys[i], score);
-            }*/
+            }
             return score;
         }
 
@@ -1923,10 +1941,10 @@ class TuringianosAgentV8 extends Agent{
                 break; // Beta cut-off
             }
         }
-        /*
+        
         for (let i = 0; i < cachesKeys.length; i++) {
             this.memoCache.set(cachesKeys[i], maxScore);
-        }*/
+        }
         return maxScore;
     }
 
@@ -1959,13 +1977,13 @@ class TuringianosAgentV8 extends Agent{
         
         const myMoves = board.valid_moves(color).length;
         const oppMoves = board.valid_moves(opp).length;
-        let mobilityWeight = 25 * Math.max(1, Math.max(rows, cols) / 4) - (this.turns/20);
+        const mobilityWeight = 0.25;
         const piecesWeigth = 1; // TODO cambiar este peso segun tamanio grilla
         
-        const gridWeight = 1 - (this.turns/400); // Todo mismo q arriba, aca con el tiempo pesa menos tomar una esquina
-        score += mobilityWeight * (myMoves - oppMoves); // Mobility bonus, scaled by board size
+        const gridWeight = Math.min(0.1, 1 - (this.turns/100)); // Todo mismo q arriba, aca con el tiempo pesa menos tomar una esquina
+        //score += mobilityWeight * (myMoves - oppMoves); // Mobility bonus, scaled by board size
         score += piecesWeigth * (myPieces - oppPieces); // Pieces weight, scaled by turns
-        score += gridWeight * (myWeight - oppWeight);
+        //score += gridWeight * (myWeight - oppWeight);
 
         
         return score;
