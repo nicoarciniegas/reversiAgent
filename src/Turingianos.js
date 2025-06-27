@@ -1740,7 +1740,7 @@ class TuringianosAgentV8 extends Agent{
         
         // Being greeedy (depth==1) brings better play, but prone error
         //if (time_left > time_lowerBound && time_left < time_upperBound) {
-         if (time_left < 200) { // if we have no time, play random
+         if (time_left < 800) { // if we have no time, play random
             this.depth = 0;
         }
 
@@ -1748,12 +1748,12 @@ class TuringianosAgentV8 extends Agent{
             this.depth = 2;
         }
 
-        if (time_left > 200 && time_left < 2000) { // if we less time, we do less search (probably)
+        if (time_left > 800 && time_left < 2000) { // if we less time, we do less search (probably)
             this.depth = 1;
         }
 
-        if (time_left > 5000) { // Constructor is only called once, they dont restart our agent at play time
-            this.depth = 4;
+        if (time_left > 6000) { // Constructor is only called once, they dont restart our agent at play time
+            this.depth = 2;
         }
     
         
@@ -1846,22 +1846,22 @@ class TuringianosAgentV8 extends Agent{
                     
                 } else if (matrix[i][j] === opp) {
                     let idx1 = this.matrixHashNormal[i][j];
-                    hashN += (idx1 * prime * 2 * 7); // multiply by 2 to differentiate opponent's pieces
+                    hashN += (idx1 * prime * 2 * 7 *31); // multiply by 2 to differentiate opponent's pieces
                     let idx2 = this.matrixHashFlipH[i][j];
-                    hashH += (idx2 * prime * 2 * 7);
+                    hashH += (idx2 * prime * 2 * 7*31);
                     let idx3 = this.matrixHashFlipV[i][j];
-                    hashV += (idx3 * prime * 2 * 7); // multiply by 2 to differentiate opponent's pieces
+                    hashV += (idx3 * prime * 2 * 7*31); // multiply by 2 to differentiate opponent's pieces
 
                     let idx5 = this.matrixDiagonalFlip[i][j];
-                    HashDiagonal += (idx5 * prime * 2 * 7);
+                    HashDiagonal += (idx5 * prime * 2 * 7*31);
                     let idx6 = this.matrixAntiDiagonalFlip[i][j];
-                    HashAntiDiagonal += (idx6 * prime * 2 * 7);
+                    HashAntiDiagonal += (idx6 * prime * 2 * 7*31);
                     let idx7 = this.matrixRotated90[i][j];
-                    hashRotated90 += (idx7 * prime * 2 * 7);
+                    hashRotated90 += (idx7 * prime * 2 * 7*31);
                     let idx8 = this.matrixRotated180[i][j];
-                    hashRotated180 += (idx8 * prime * 2 * 7);
+                    hashRotated180 += (idx8 * prime * 2 * 7*31);
                     let idx9 = this.matrixRotated270[i][j];
-                    hashRotated270 += (idx9 * prime * 2 * 7);
+                    hashRotated270 += (idx9 * prime * 2 * 7*31);
                 }
             }
         }
@@ -1870,16 +1870,16 @@ class TuringianosAgentV8 extends Agent{
         hashes.push(String(hashH) +  'D' + String(depth) + color);
         hashes.push(String(hashV) +  'D' + String(depth) + color);
         
-        /*
-        hashes.push(String(HashDiagonal) +  'D' + String(depth) + color);
-        hashes.push(String(HashAntiDiagonal) +  'D' + String(depth) + color);
+        
+        //hashes.push(String(HashDiagonal) +  'D' + String(depth) + color);
+        //hashes.push(String(HashAntiDiagonal) +  'D' + String(depth) + color);
         
 
         hashes.push(String(hashRotated90) +  'D' + String(depth) + color);
-        hashes.push(String(hashRotated180) +  'D' + String(depth) + color);
+        //hashes.push(String(hashRotated180) +  'D' + String(depth) + color);
         hashes.push(String(hashRotated270) +  'D' + String(depth) + color);
-        */
         
+        // TODO check every hash to know if its working
         
         
         return hashes;
@@ -1981,9 +1981,9 @@ class TuringianosAgentV8 extends Agent{
         const piecesWeigth = 1; // TODO cambiar este peso segun tamanio grilla
         
         const gridWeight = Math.min(0.1, 1 - (this.turns/100)); // Todo mismo q arriba, aca con el tiempo pesa menos tomar una esquina
-        //score += mobilityWeight * (myMoves - oppMoves); // Mobility bonus, scaled by board size
+        score += mobilityWeight * (myMoves - oppMoves); // Mobility bonus, scaled by board size
         score += piecesWeigth * (myPieces - oppPieces); // Pieces weight, scaled by turns
-        //score += gridWeight * (myWeight - oppWeight);
+        score += gridWeight * (myWeight - oppWeight);
 
         
         return score;
