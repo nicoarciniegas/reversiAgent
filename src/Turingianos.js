@@ -1587,29 +1587,18 @@ class TuringianosAgentV7 extends Agent{
 class TuringianosAgentV8 extends Agent{
     constructor(){
         super()
-        this.name = "Turingianos";
-        this.turns = 0;
-        this.weight_grid = [];
-        this.current_color = '';
-        this.depth = 7;
-        // Memoization cache
-        this.memoCache = new Map();
-        this.matrixHashNormal = []
-        this.matrixHashFlipH = []
-        this.matrixHashFlipV = []
-        
+        this.name = "Turingianos";   
     }
 
-    initialize_agent(color, board) {
+    initialize_agent(color, board, time) {
         console.log("Initializing agent again");
         this.turns = 0; // Reset turns
         this.current_color = color; // Reset current color
-        this.depth = 7; // Reset depth
+        this.depth = 5; // Reset depth
         this.weight_grid = this.generateWeightGrid(board); // Generate weight grid for the first time
         // Memoization cache
         this.memoCache = new Map();
         this.historyTable = {}; // Format: { "i,j": score }
-        console.log("Weight grid", this.weight_grid);
         this.matrixHashNormal = this.generateMatrixHash(board);
         this.matrixHashFlipH = this.flipMatrixH(this.matrixHashNormal);
         this.matrixHashFlipV = this.flipMatrixV(this.matrixHashNormal);
@@ -1625,15 +1614,9 @@ class TuringianosAgentV8 extends Agent{
         this.matrixDiagonalFlip = this.flipMatrixV(this.matrixRotated90);
         this.matrixAntiDiagonalFlip = this.flipMatrixV(this.matrixRotated270);
 
-        console.log("hash grid", this.matrixHashNormal  );
-        console.log("hash grid flipH", this.matrixHashFlipH  );
-        console.log("hash grid flipV", this.matrixHashFlipV  );
-        console.log("hash grid flipHV", this.matrixHashFlipHV  );
-        console.log("hash grid rotated90", this.matrixRotated90  );
-        console.log("hash grid rotated180", this.matrixRotated180  );
-        console.log("hash grid rotated270", this.matrixRotated270  );
-        console.log("hash grid diagonalFlip", this.matrixDiagonalFlip  );
-        console.log("hash grid antiDiagonalFlip", this.matrixAntiDiagonalFlip  );
+        this.maxTime = time/(this.matrixHashNormal.length * this.matrixHashNormal[0].length);
+        this.startTime = Date.now();
+        this.timeLimit = this.startTime + this.maxTime; //100ms max, tune it
 
     }
     generateMatrixHash(board){
@@ -1730,34 +1713,60 @@ class TuringianosAgentV8 extends Agent{
 
         const time_lowerBound = this.total_time * 0.40;
         const time_upperBound = this.total_time * 0.60; // defines constains regardlesss of time
+
         if (this.current_color != color){
-            this.initialize_agent(color,board);
+            this.initialize_agent(color,board, time_left);
         }
 
-        if (this.turns === 1) {
-            this.total_time = time_left;
+
+        // Move Ordering Implementation (best moves first)
+        const rows = board.board.length;
+        const cols = board.board[0].length;
+        moves.sort((a, b) => {
+        // corners first
+        if ((a.i === 0 && a.j === 0) || (a.i === 0 && a.j === cols - 1) || (a.i === rows - 1 && a.j === 0) || (a.i === rows - 1 && a.j === cols - 1)) {
+            return 100; // a is a corner
         }
+        if ((b.i === 0 && b.j === 0) || (b.i === 0 && b.j === cols - 1) || (b.i === rows - 1 && b.j === 0) || (b.i === rows - 1 && b.j === cols - 1)) {
+            return 100; // b is a corner
+        }
+        // Then sort by history table
+        const aKey = `${a.i},${a.j}`;
+        const bKey = `${b.i},${b.j}`;
+        return (this.historyTable[bKey] || 0) - (this.historyTable[aKey] || 0); // Higher scores first
+        });
         
         // Being greeedy (depth==1) brings better play, but prone error
         //if (time_left > time_lowerBound && time_left < time_upperBound) {
-         if (time_left < 800) { // if we have no time, play random
+         if (time_left < 60) { // if we have no time, play random
+            if (Math.random() < 0.5){
+                return moves[0];
+        }
+            else{
+                return moves[Math.floor(moves.length * Math.random())];
+            }
+        }
+
+         if (time_left < 2000) { // if we have no time, play random
             this.depth = 0;
         }
 
-        if (time_left > 2000 && time_left < 5000) { // if we less time, we do less search (probably)
-            this.depth = 2;
-        }
-
-        if (time_left > 800 && time_left < 2000) { // if we less time, we do less search (probably)
+        if (time_left > 2000 && time_left < 6000) { // if we less time, we do less search (probably)
             this.depth = 1;
         }
 
         if (time_left > 6000) { // Constructor is only called once, they dont restart our agent at play time
             this.depth = 2;
         }
+
     
+        if (time_left > 9000) { // Constructor is only called once, they dont restart our agent at play time
+            this.depth = 3;
+        }
         
         
+        this.timeLimit = Date.now() + this.maxTime * this.depth**2;
+
         let bestScore = -Infinity;
         let bestMove = moves[0];
         
@@ -1773,6 +1782,7 @@ class TuringianosAgentV8 extends Agent{
                 bestMove = move;
             }
         }
+
         return {'x': bestMove.x, 'y': bestMove.y};
     }
 
@@ -1865,22 +1875,15 @@ class TuringianosAgentV8 extends Agent{
                 }
             }
         }
+
         hashes.push(String(hashN) + 'D' + String(depth)  + color); // Add depth to the hash for uniqueness
-        
         hashes.push(String(hashH) +  'D' + String(depth) + color);
         hashes.push(String(hashV) +  'D' + String(depth) + color);
-        
-        
-        //hashes.push(String(HashDiagonal) +  'D' + String(depth) + color);
-        //hashes.push(String(HashAntiDiagonal) +  'D' + String(depth) + color);
-        
-
+        hashes.push(String(HashDiagonal) +  'D' + String(depth) + color);
+        hashes.push(String(HashAntiDiagonal) +  'D' + String(depth) + color);
         hashes.push(String(hashRotated90) +  'D' + String(depth) + color);
-        //hashes.push(String(hashRotated180) +  'D' + String(depth) + color);
+        hashes.push(String(hashRotated180) +  'D' + String(depth) + color);
         hashes.push(String(hashRotated270) +  'D' + String(depth) + color);
-        
-        // TODO check every hash to know if its working
-        
         
         return hashes;
     }
@@ -1906,6 +1909,10 @@ class TuringianosAgentV8 extends Agent{
             }
             return score;
         }
+
+        if (Date.now() > this.timeLimit){
+            return this.evaluate(board, color);
+        } 
 
         // Move Ordering Implementation (best moves first)
         const rows = board.board.length;
@@ -1978,7 +1985,7 @@ class TuringianosAgentV8 extends Agent{
         const myMoves = board.valid_moves(color).length;
         const oppMoves = board.valid_moves(opp).length;
         const mobilityWeight = 0.25;
-        const piecesWeigth = 1; // TODO cambiar este peso segun tamanio grilla
+        const piecesWeigth = 1.25; // TODO cambiar este peso segun tamanio grilla
         
         const gridWeight = Math.min(0.1, 1 - (this.turns/100)); // Todo mismo q arriba, aca con el tiempo pesa menos tomar una esquina
         score += mobilityWeight * (myMoves - oppMoves); // Mobility bonus, scaled by board size
