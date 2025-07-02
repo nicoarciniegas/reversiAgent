@@ -1665,7 +1665,13 @@ class TuringianosAgentV8 extends Agent{
             [0, 0], [0, cols - 1],
             [rows - 1, 0], [rows - 1, cols - 1]
         ];
-        corners.forEach(([i, j]) => grid[i][j] = 50 + 5 * scale); // Scale corner value
+        for (let k = 0; k < corners.length; k++) {
+            const i = corners[k][0];
+            const j = corners[k][1];
+            grid[i][j] = 50 + 5 * scale;
+        }
+
+
 
         // X-Squares (always -5)
         
@@ -2012,5 +2018,197 @@ class TuringianosAgentV8 extends Agent{
 
     opponent(color) {
         return color === 'B' ? 'W' : 'B';
+    }
+}
+
+class AgentCuliquitaca extends Agent {
+    constructor() {
+        super();
+        this.depth = 4;
+        this.startTime = 0;
+        this.timeLimit = 0;
+        this.zobristTable = null;
+        this.transpositionTable = new Map();
+    }
+
+    // Inicializa tabla Zobrist para un tablero del tamaño dado
+    initZobrist(size) {
+        const table = [];
+        for (let i = 0; i < size; i++) {
+            table[i] = [];
+            for (let j = 0; j < size; j++) {
+                table[i][j] = {
+                    'W': Math.floor(Math.random() * Number.MAX_SAFE_INTEGER),
+                    'B': Math.floor(Math.random() * Number.MAX_SAFE_INTEGER)
+                };
+            }
+        }
+        return table;
+    }
+
+    // Calcula hash único de un tablero usando Zobrist
+    computeZobristHash(board) {
+        let hash = 0;
+        const size = board.board.length;
+        for (let i = 0; i < size; i++) {
+            for (let j = 0; j < size; j++) {
+                const piece = board.board[i][j];
+                if (piece !== ' ') {
+                    hash ^= this.zobristTable[i][j][piece];
+                }
+            }
+        }
+        return hash;
+    }
+
+    // Evalúa si una casilla está en la zona peligrosa de apertura
+    isDangerSquare(x, y) {
+        const dangerSquares = [
+            [2, 3], [3, 2], [4, 5], [5, 4] // C4, D3, E6, F5 (0-indexed)
+        ];
+        return dangerSquares.some(([dy, dx]) => dy === y && dx === x);
+    }
+
+    // Función principal para decidir movimiento
+    compute(percept) {
+        const color = percept['color'];
+        const board = percept['board'];
+        const myTime = percept[color];
+
+        const size = board.board.length;
+        if (!this.zobristTable || this.zobristTable.length !== size) {
+            this.zobristTable = this.initZobrist(size);
+        }
+
+        this.startTime = Date.now();
+        this.timeLimit = this.startTime + Math.max(50, Math.min(myTime - 100, 400));
+        this.transpositionTable.clear();
+
+        let moves = board.valid_moves(color);
+        if (moves.length === 0) return null;
+
+        // Detectar fase del juego
+        let totalPieces = 0;
+        board.board.forEach(row => {
+            row.forEach(cell => {
+                if (cell !== ' ') totalPieces++;
+            });
+        });
+        const totalCells = size * size;
+        let gamePhase = 'opening'; //Menos del 25% del tablero ocupado
+        if (totalPieces >= totalCells * 0.75) gamePhase = 'end'; //Más del 75 %
+        else if (totalPieces >= totalCells * 0.25) gamePhase = 'mid'; //entre 25%-75%
+
+        // Filtro de apertura: evitar casillas peligrosas si es posible
+        if (gamePhase === 'opening') {
+            const safeMoves = moves.filter(m => !this.isDangerSquare(m.x, m.y));
+            if (safeMoves.length > 0) moves = safeMoves;
+        }
+
+        let bestMove = null;
+        let bestScore = -Infinity;
+        const opp = (color === 'W') ? 'B' : 'W';
+
+        for (const move of moves) {
+            const newBoard = board.clone();
+            const success = newBoard.move(move.x, move.y, color);
+            if (!success) continue;
+
+            const score = this.minimax(newBoard, this.depth - 1, false, opp, -Infinity, Infinity, gamePhase);
+            if (score > bestScore || bestMove === null) {
+                bestScore = score;
+                bestMove = move;
+            }
+            if (Date.now() > this.timeLimit) break;
+        }
+
+        return (bestMove && typeof bestMove.x === 'number' && typeof bestMove.y === 'number') ? bestMove : moves[0];
+    }
+
+    // Minimax con poda Alpha-Beta y Transposition Table
+    minimax(board, depth, maximizingPlayer, color, alpha, beta, gamePhase) {
+        const hash = this.computeZobristHash(board);
+        if (this.transpositionTable.has(hash)) return this.transpositionTable.get(hash);
+
+        if (Date.now() > this.timeLimit) return this.evaluate(board, color, gamePhase);
+
+        const moves = board.valid_moves(color);
+        const opp = (color === 'W') ? 'B' : 'W';
+        if (depth === 0 || moves.length === 0) {
+            const evalScore = this.evaluate(board, color, gamePhase);
+            this.transpositionTable.set(hash, evalScore);
+            return evalScore;
+        }
+
+        if (maximizingPlayer) {
+            let maxEval = -Infinity;
+            for (const move of moves) {
+                const newBoard = board.clone();
+                newBoard.move(move.x, move.y, color);
+                const evalScore = this.minimax(newBoard, depth - 1, false, opp, alpha, beta, gamePhase);
+                maxEval = Math.max(maxEval, evalScore);
+                alpha = Math.max(alpha, evalScore);
+                if (beta <= alpha || Date.now() > this.timeLimit) break;
+            }
+            this.transpositionTable.set(hash, maxEval);
+            return maxEval;
+        } else {
+            let minEval = Infinity;
+            for (const move of moves) {
+                const newBoard = board.clone();
+                newBoard.move(move.x, move.y, color);
+                const evalScore = this.minimax(newBoard, depth - 1, true, opp, alpha, beta, gamePhase);
+                minEval = Math.min(minEval, evalScore);
+                beta = Math.min(beta, evalScore);
+                if (beta <= alpha || Date.now() > this.timeLimit) break;
+            }
+            this.transpositionTable.set(hash, minEval);
+            return minEval;
+        }
+    }
+
+    // Evaluación estratégica del tablero según fase del juego
+    evaluate(board, color, gamePhase) {
+        const opp = (color === 'W') ? 'B' : 'W';
+        const size = board.board.length;
+
+        let score = 0;
+        let myCount = 0, oppCount = 0;
+
+        const corners = [[0,0], [0,size-1], [size-1,0], [size-1,size-1]];
+        const nearCorners = [
+            [0,1],[1,0],[1,1],
+            [0,size-2],[1,size-2],[1,size-1],
+            [size-2,0],[size-2,1],[size-1,1],
+            [size-2,size-2],[size-2,size-1],[size-1,size-2]
+        ];
+
+        for (let i = 0; i < size; i++) {
+            for (let j = 0; j < size; j++) {
+                const cell = board.board[i][j];
+                if (cell === color) {
+                    myCount++;
+                    if (corners.some(c => c[0] === i && c[1] === j)) score += 25;
+                    else if (nearCorners.some(c => c[0] === i && c[1] === j)) score -= 10;
+                    else score += 1;
+                } else if (cell === opp) {
+                    oppCount++;
+                    if (corners.some(c => c[0] === i && c[1] === j)) score -= 25;
+                    else if (nearCorners.some(c => c[0] === i && c[1] === j)) score += 10;
+                    else score -= 1;
+                }
+            }
+        }
+
+        const myMoves = board.valid_moves(color).length;
+        const oppMoves = board.valid_moves(opp).length;
+        const mobility = myMoves - oppMoves;
+
+        //En el juego medio le damos más valor a limitar la movilidad del oponente y 
+        // en el final captura esquinas y cierra el tablero
+        const weightMobility = gamePhase === 'mid' ? 15 : (gamePhase === 'end' ? 5 : 10); 
+        const weightDiscDiff = gamePhase === 'mid' ? 0.5 : (gamePhase === 'end' ? 10 : 1);
+
+        return score + (weightMobility * mobility) + (weightDiscDiff * (myCount - oppCount));
     }
 }
