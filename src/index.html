@@ -13,7 +13,7 @@
 <script type='text/javascript' src='https://jgomezpe.github.io/konekti/src/konekti.js'></script>
 <script type='text/javascript' src='reversi.js'></script>
 <script type='text/javascript' src='Turingianos.js'></script>
-
+<script type='text/javascript' src='agenteLordDemonio.js'></script>
 </head>
 
 <body>
@@ -21,17 +21,9 @@
 <script>
 var players = { // Here we are going to set all the players name : instance of class
     'r1': new RandomAgent(),
-    "t1": new TuringianosAgentV1(),
-    't2': new TuringianosAgentV2(),
-    't3': new TuringianosAgentV3(),
-    't4': new TuringianosAgentV4(),
-    'r2': new RandomAgent2(),
-    't5': new TuringianosAgentV5(),
-    't6': new TuringianosAgentV6(),
-    't7': new TuringianosAgentV7(),
     't8': new TuringianosAgentV8(),
-    'c': new AgentCuliquitaca(),
-    't9': new TuringianosAgentV9()
+    't9': new TuringianosAgentV9(),
+    'd': new LordDemonio(),
 }
 
 Konekti.uses('header','navbar', 'canvas')
