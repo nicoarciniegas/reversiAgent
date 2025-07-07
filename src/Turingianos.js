@@ -1,3 +1,610 @@
+// alpha beta pruning and memoization
+class TuringianosAgentV3 extends Agent{
+    constructor(){
+        super()
+        this.name = "Turingianos";
+        this.turns = 0; // Counter
+        // Memoization cache
+        this.memoCache = new Map();
+        this.depth = 3; // Default depth
+    }
+    
+    compute(percept){
+        var color = percept['color'] // Gets player's color
+        var wtime = percept['W'] // Gets remaining time of whites color player
+        var btime = percept['B'] // Gets remaining time of blacks color player
+        var board = percept['board'] // Gets the current board's position
+        var moves = board.valid_moves(color)
+        var time_left = color == 'W' ? wtime : btime
+        this.turns += 1 // Add 1 to the turn, usefull to guess if we are in early, mid or late game
+    
+        
+        if (time_left < 200) { // if we have no time, play random
+            this.depth = 0;
+        }
+
+        if (time_left > 2000 && time_left < 5000) { // if we less time, we do less search (probably)
+            this.depth = 2;
+        }
+
+        if (time_left > 200 && time_left < 2000) { // if we less time, we do less search (probably)
+            this.depth = 1;
+        }
+
+        if (time_left > 5000) { // Constructor is only called once, they dont restart our agent at play time
+            this.depth = 3;
+        }
+    
+
+        let bestScore = -Infinity;
+        let bestMove = moves[0];
+        this.memoCache.clear(); // Reset cache for each new turn to avoid crashing memory (this should use 400mb of memory at maximum if we clear it every turn)
+        // For each possible move, check negamax
+        for (let move of moves) {
+            let newBoard = this.simulateMove(board, move, color);
+            let score = -this.negamax(newBoard, this.opponent(color), this.depth,-Infinity, Infinity);
+            if (score > bestScore) {
+                bestScore = score;
+                bestMove = move;
+            }
+        }
+
+        return {'x': bestMove.x, 'y': bestMove.y};
+    }
+
+    negamax(board, color, depth, alpha, beta) {
+        // TODO: order moves by heuristic to improve performance
+        // TODO use a better and faster cache key, use hash of every board position
+        // TODO: better heuristic function, not just count pieces
+        // TODO: use transposition table to store already evaluated positions (horizontal flip and vertical flip)
+        // Generate a unique cache key (board + depth)
+        const cacheKey = JSON.stringify(board.board) + depth;
+
+        // Check if this position + depth is already memoized
+        if (this.memoCache.has(cacheKey)) {
+            return this.memoCache.get(cacheKey);
+        }
+
+        let moves = board.valid_moves(color);
+        if (depth === 0 || moves.length === 0) {
+            const score = this.evaluate(board, color);
+            this.memoCache.set(cacheKey, score); // Store result
+            return score;
+        }
+
+        let maxScore = -Infinity;
+        for (let move of moves) {
+            
+            let newBoard = this.simulateMove(board, move, color);
+            let score = -this.negamax(newBoard, this.opponent(color), depth - 1, -beta, -alpha);
+            if (score > maxScore) {
+                maxScore = score;
+            }
+            alpha = Math.max(alpha, score);
+            if (alpha >= beta) {
+                break; // Beta cut-off
+            }
+        }
+        this.memoCache.set(cacheKey, maxScore); // Store result
+        return maxScore;
+    }
+
+    /**
+     * Count the number of pieces for each player on the board.
+     * and return the difference between the player's pieces and the opponent's pieces.
+     */
+    evaluate(board, color) {
+        let myCount = 0, oppCount = 0;
+        let opp = this.opponent(color);
+        let matrix = board.board; //Retorna el tablero actual como una matriz y no como objeto Board
+        // Conteo de piezas en el tablero
+        // Recorre la matriz y cuenta las piezas del jugador y del oponente
+        let rows = matrix.length;
+        let cols = matrix[0].length;
+        for (let i = 0; i < rows; i++) {
+            for (let j = 0; j < cols; j++) {
+                if (!matrix[i] || !matrix[i][j]) continue;
+                if (matrix[i][j] === color) myCount++;
+                else if (matrix[i][j] === opp) oppCount++;
+            }
+        }
+        return myCount - oppCount;
+    }
+
+    //Simulacion básica a través de los mismos metodos del objeto Board, clonando tablero y moviendo la pieza.
+    /**
+     * Simulates a move on the board by cloning it and applying the move.
+     * @param {Board} board - The current board state.
+     * @param {Object} move - The move to simulate, with properties x and y.
+     * @param {string} color - The color of the player making the move.
+     * @returns {Board} - A new board state after the simulated move.
+     */
+    simulateMove(board, move, color) {
+        let newBoard = board.clone();
+        newBoard.move(move.x, move.y, color);
+        return newBoard;
+    }
+
+    opponent(color) {
+        return color === 'B' ? 'W' : 'B';
+    }
+}
+
+// alpha beta pruning, memoization and heuristic with grid weight, and movilization bonus
+class TuringianosAgentV4 extends Agent{
+    constructor(){
+        super()
+        this.name = "Turingianos";
+        this.turns = 0;
+        this.weight_grid = [];
+        this.current_color = '';
+        this.depth = 3;
+        // Memoization cache
+        this.memoCache = new Map();
+    }
+
+    initialize_agent(color, board) {
+        console.log("Initializing agent again");
+        this.weight_grid = [];
+        this.turns = 0; // Reset turns
+        this.current_color = color; // Reset current color
+        this.depth = 3; // Reset depth
+        this.weight_grid = this.generateWeightGrid(board); // Generate weight grid for the first time
+        // Memoization cache
+        this.memoCache = new Map();
+        //console.log("Weight grid", this.weight_grid);
+    }
+
+    /**
+     * Generates a weight grid for any board size (square or rectangular).
+     * Values:
+     * - Corners: +20
+     * - X-Squares (diagonal to corners): -5
+     * - C-Squares (next to corners): -3
+     * - Edges: +2
+     * - Inner squares: 0
+     */
+    generateWeightGrid(board) {
+        let matrix = board.board; //Retorna el tablero actual como una matriz y no como objeto Board
+        // Conteo de piezas en el tablero
+        // Recorre la matriz y cuenta las piezas del jugador y del oponente
+        let rows = matrix.length;
+        let cols = matrix[0].length;
+        const maxDimension = Math.max(rows, cols);
+        let grid = Array.from({ length: rows }, () => Array(cols).fill(1)); // Initialize grid with ones
+        // Dynamic edge value (scales with board size)
+        const baseEdgeValue = 1;
+        const scaledEdgeValue = baseEdgeValue + Math.floor(Math.max(0, maxDimension - 10) * 0.25);
+        const edgeValue = Math.round(scaledEdgeValue); // Round to integer
+        const scale = Math.max(1,maxDimension/10); // Scale factor for edge values
+
+        const corners = [
+            [0, 0], [0, cols - 1],
+            [rows - 1, 0], [rows - 1, cols - 1]
+        ];
+        corners.forEach(([i, j]) => grid[i][j] = 4 + 2 * scale); // Scale corner value
+
+        // X-Squares (always -5)
+        
+        corners.forEach(([i, j]) => {
+            if (i > 0 && j > 0) grid[i - 1][j - 1] = -1 - 1 * scale;
+            if (i > 0 && j < cols - 1) grid[i - 1][j + 1] = -1 - 1 * scale;
+            if (i < rows - 1 && j > 0) grid[i + 1][j - 1] = -1 - 1 * scale;
+            if (i < rows - 1 && j < cols - 1) grid[i + 1][j + 1] = -1 - 1 * scale; // Scale X-square value
+        });
+        
+
+        // C-Squares (always -3)
+        
+        corners.forEach(([i, j]) => {
+            if (i > 0) grid[i - 1][j] = -1 - 1 * scale;
+            if (i < rows - 1) grid[i + 1][j] = -1 - 1 * scale;
+            if (j > 0) grid[i][j - 1] = -1 - 1 * scale;
+            if (j < cols - 1) grid[i][j + 1] = -1 - 1 * scale;
+        });
+        
+
+        // Edges (scaled value)
+        for (let i = 0; i < rows; i++) {
+            for (let j = 0; j < cols; j++) {
+                if (grid[i][j] !== 1) continue; // Skip assigned squares
+                if (i === 0 || i === rows - 1 || j === 0 || j === cols - 1) {
+                    grid[i][j] = edgeValue; // Dynamic edge weight
+                }
+            }
+        }
+
+        return grid;
+    }
+    
+    compute(percept){
+        var color = percept['color'] // Gets player's color
+        var wtime = percept['W'] // Gets remaining time of whites color player
+        var btime = percept['B'] // Gets remaining time of blacks color player
+        var board = percept['board'] // Gets the current board's position
+        var moves = board.valid_moves(color)
+        var time_left = color == 'W' ? wtime : btime
+        this.turns += 1 // Add 1 to the turn, usefull to guess if we are in early, mid or late game
+        
+        if (this.current_color != color){
+            this.initialize_agent(color,board);
+        }
+        
+        if (time_left < 600) { // if we have no time, check only 1 move
+            this.depth = 0;
+        }
+
+        if (time_left < 70) { // if we have no time, play random
+            var index = Math.floor(moves.length * Math.random())
+            return moves[index]
+        }
+        
+        if (time_left > 2000 && time_left < 5000) { // if we less time, we do less search (probably)
+            this.depth = 1;
+        }
+
+        if (time_left > 600 && time_left < 2000) { // if we less time, we do less search (probably)
+            this.depth = 1;
+        }
+
+        if (time_left > 5000) { // Constructor is only called once, they dont restart our agent at play time
+            this.depth = 3;
+        }
+        if (this.turns < 40) { // Early game, use less depth
+            this.depth = 1; 
+        }
+        
+        let bestScore = -Infinity;
+        let bestMove = moves[0];
+        if (this.turns % 2 === 0) {
+            this.memoCache.clear(); // Reset cache for each new turn to avoid crashing memory (this should use 400mb of memory at maximum if we clear it every turn)
+        }
+        // For each possible move, check negamax
+        for (let move of moves) {
+            let newBoard = this.simulateMove(board, move, color);
+            let score = -this.negamax(newBoard, this.opponent(color), this.depth,-Infinity, Infinity);
+            if (score > bestScore) {
+                bestScore = score;
+                bestMove = move;
+            }
+        }
+
+        return {'x': bestMove.x, 'y': bestMove.y};
+    }
+
+    negamax(board, color, depth, alpha, beta) {
+        // TODO: order moves by heuristic to improve performance
+        // TODO use a better and faster cache key, use hash of every board position
+        // TODO: better heuristic function, not just count pieces
+        // TODO: use transposition table to store already evaluated positions (horizontal flip and vertical flip)
+        // Generate a unique cache key (board + depth)
+        const cacheKey = JSON.stringify(board.board) + depth;
+
+        // Check if this position + depth is already memoized
+        if (this.memoCache.has(cacheKey)) {
+            return this.memoCache.get(cacheKey);
+        }
+
+        let moves = board.valid_moves(color);
+        if (depth === 0 || moves.length === 0) {
+            const score = this.evaluate(board, color);
+            this.memoCache.set(cacheKey, score); // Store result
+            return score;
+        }
+
+        let maxScore = -Infinity;
+        for (let move of moves) {
+            
+            let newBoard = this.simulateMove(board, move, color);
+            let score = -this.negamax(newBoard, this.opponent(color), depth - 1, -beta, -alpha);
+            if (score > maxScore) {
+                maxScore = score;
+            }
+            alpha = Math.max(alpha, score);
+            if (alpha >= beta) {
+                break; // Beta cut-off
+            }
+        }
+        this.memoCache.set(cacheKey, maxScore); // Store result
+        return maxScore;
+    }
+
+    /**
+     * Count the number of pieces for each player on the board.
+     * and return the difference between the player's pieces and the opponent's pieces.
+     */
+    evaluate(board, color) {
+        let opp = this.opponent(color);
+        let matrix = board.board;
+        let score = 0;
+        let rows = matrix.length;
+        let cols = matrix[0].length;
+        // Sum weights for all pieces
+        for (let i = 0; i < rows; i++) {
+            for (let j = 0; j < cols; j++) {
+                if (matrix[i][j] === color) {
+                    score += this.weight_grid[i][j]; // Add weight for player's piece
+                } else if (matrix[i][j] === opp) {
+                    score -= this.weight_grid[i][j]; // Subtract weight for opponent's piece
+                }
+            }
+        }
+        
+        const myMoves = board.valid_moves(color).length;
+        const oppMoves = board.valid_moves(opp).length;
+        //console.log("My moves:", myMoves, "Opponent moves:", oppMoves);
+        score += 1*(myMoves - oppMoves); // Mobility bonus
+        
+        return score;
+    }
+
+    //Simulacion básica a través de los mismos metodos del objeto Board, clonando tablero y moviendo la pieza.
+    /**
+     * Simulates a move on the board by cloning it and applying the move.
+     * @param {Board} board - The current board state.
+     * @param {Object} move - The move to simulate, with properties x and y.
+     * @param {string} color - The color of the player making the move.
+     * @returns {Board} - A new board state after the simulated move.
+     */
+    simulateMove(board, move, color) {
+        let newBoard = board.clone();
+        newBoard.move(move.x, move.y, color);
+        return newBoard;
+    }
+
+    opponent(color) {
+        return color === 'B' ? 'W' : 'B';
+    }
+}
+
+
+// alpha beta pruning, memoization and heuristic with grid weight, and movilization bonus, movement with moment, mas peso a los movimientos
+// cercanos, estrategia para forzar algun camino estrategicamente
+class TuringianosAgentV5 extends Agent{
+    constructor(){
+        super()
+        this.name = "Turingianos";
+        this.turns = 0;
+        this.weight_grid = [];
+        this.current_color = '';
+        this.depth = 3;
+        // Memoization cache
+        this.memoCache = new Map();
+    }
+
+    initialize_agent(color, board) {
+        console.log("Initializing agent again");
+        this.weight_grid = [];
+        this.turns = 0; // Reset turns
+        this.current_color = color; // Reset current color
+        this.depth = 3; // Reset depth
+        this.weight_grid = this.generateWeightGrid(board); // Generate weight grid for the first time
+        // Memoization cache
+        this.memoCache = new Map();
+        //console.log("Weight grid", this.weight_grid);
+    }
+
+    /**
+     * Generates a weight grid for any board size (square or rectangular).
+     * Values:
+     * - Corners: +20
+     * - X-Squares (diagonal to corners): -5
+     * - C-Squares (next to corners): -3
+     * - Edges: +2
+     * - Inner squares: 0
+     */
+    generateWeightGrid(board) {
+        let matrix = board.board; //Retorna el tablero actual como una matriz y no como objeto Board
+        // Conteo de piezas en el tablero
+        // Recorre la matriz y cuenta las piezas del jugador y del oponente
+        let rows = matrix.length;
+        let cols = matrix[0].length;
+        const maxDimension = Math.max(rows, cols);
+        let grid = Array.from({ length: rows }, () => Array(cols).fill(1)); // Initialize grid with ones
+        // Dynamic edge value (scales with board size)
+        const baseEdgeValue = 1;
+        const scaledEdgeValue = baseEdgeValue + Math.floor(Math.max(0, maxDimension - 10) * 0.25);
+        const edgeValue = Math.round(scaledEdgeValue); // Round to integer
+        const scale = Math.max(1,maxDimension/10); // Scale factor for edge values
+
+        const corners = [
+            [0, 0], [0, cols - 1],
+            [rows - 1, 0], [rows - 1, cols - 1]
+        ];
+        corners.forEach(([i, j]) => grid[i][j] = 4 + 2 * scale); // Scale corner value
+
+        // X-Squares (always -5)
+        
+        corners.forEach(([i, j]) => {
+            if (i > 0 && j > 0) grid[i - 1][j - 1] = -5 - 1 * scale;
+            if (i > 0 && j < cols - 1) grid[i - 1][j + 1] = -5 - 1 * scale;
+            if (i < rows - 1 && j > 0) grid[i + 1][j - 1] = -5 - 1 * scale;
+            if (i < rows - 1 && j < cols - 1) grid[i + 1][j + 1] = -5 - 1 * scale; // Scale X-square value re added -5
+        });
+        
+
+        // C-Squares (always -3)
+        
+        corners.forEach(([i, j]) => {
+            if (i > 0) grid[i - 1][j] = -3 - 1 * scale;
+            if (i < rows - 1) grid[i + 1][j] = -3 - 1 * scale;
+            if (j > 0) grid[i][j - 1] = -3 - 1 * scale;
+            if (j < cols - 1) grid[i][j + 1] = -3 - 1 * scale; //Re added -3
+        });
+        
+
+        // Edges (scaled value)
+        for (let i = 0; i < rows; i++) {
+            for (let j = 0; j < cols; j++) {
+                if (grid[i][j] !== 1) continue; // Skip assigned squares
+                if (i === 0 || i === rows - 1 || j === 0 || j === cols - 1) {
+                    grid[i][j] = edgeValue; // Dynamic edge weight
+                }
+            }
+        }
+
+        return grid;
+    }
+    
+    compute(percept){
+        var color = percept['color'] // Gets player's color
+        var wtime = percept['W'] // Gets remaining time of whites color player
+        var btime = percept['B'] // Gets remaining time of blacks color player
+        var board = percept['board'] // Gets the current board's position
+        var moves = board.valid_moves(color)
+        var time_left = color == 'W' ? wtime : btime
+        this.turns += 1 // Add 1 to the turn, usefull to guess if we are in early, mid or late game
+        
+        if (this.current_color != color){
+            this.initialize_agent(color,board);
+        }
+        
+        if (time_left < 666) { // if we have no time, check only 1 move
+            this.depth = 0;
+        }
+
+        if (time_left < 70) { // if we have no time, play random
+            var index = Math.floor(moves.length * Math.random())
+            return moves[index]
+        }
+        /*
+        if (time_left > 5000 && time_left < 6666 { // if we less time, we do less search (probably)
+            this.depth = 2;
+        }
+        */
+        if (time_left > 2000 && time_left < 6666) { // if we less time, we do less search (probably)
+            this.depth = 2;
+        }
+         if (time_left > 666 && time_left < 2000) { // if we less time, we do less search (probably)
+            this.depth = 1;
+        }
+
+        if (time_left > 6666) { // Constructor is only called once, they dont restart our agent at play time
+            this.depth = 2;
+        }
+        if (this.turns < 7) { // Strong opening - tuned to less than 7 turns
+            this.depth = 4; 
+        }
+
+        let bestScore = -Infinity;
+        let bestMove = moves[0];
+        if (this.turns % 31 === 0) {
+            this.memoCache.clear(); // Reset cache for each new turn to avoid crashing memory (this should use 400mb of memory at maximum if we clear it every turn)
+        }
+        // For each possible move, check negamax
+        for (let move of moves) {
+            let newBoard = this.simulateMove(board, move, color);
+            let score = -this.negamax(newBoard, this.opponent(color), this.depth,-Infinity, Infinity);
+            if (score > bestScore) {
+                bestScore = score;
+                bestMove = move;
+            }
+        }
+
+        return {'x': bestMove.x, 'y': bestMove.y};
+    }
+
+     getBoardHash(board) {
+        // .flat() creates a 1D array, .join('') creates a single string.
+        // This is much faster than JSON.stringify for caching.
+        return board.board.flat().join('');
+    }
+
+
+    negamax(board, color, depth, alpha, beta) {
+        // Uses the new, faster hashing function for the cache key.
+        const cacheKey = this.getBoardHash(board) + depth;
+
+        if (this.memoCache.has(cacheKey)) {
+            return this.memoCache.get(cacheKey);
+        }
+
+        let moves = board.valid_moves(color);
+        if (depth === 0 || moves.length === 0) {
+            const score = this.evaluate(board, color);
+            this.memoCache.set(cacheKey, score);
+            return score;
+        }
+
+        // Move Ordering Implementation
+        // Sort moves based on the weight_grid value of the destination square.
+        // This makes alpha-beta pruning much more effective.
+        moves.sort((a, b) => {
+            const scoreA = this.weight_grid[a.y][a.x];
+            const scoreB = this.weight_grid[b.y][b.x];
+            return scoreB - scoreA; // Sort in descending order (best moves first)
+        });
+
+
+        let maxScore = -Infinity;
+        for (let move of moves) {
+            let newBoard = this.simulateMove(board, move, color);
+            let score = -this.negamax(newBoard, this.opponent(color), depth - 1, -beta, -alpha);
+
+            if (score > maxScore) {
+                maxScore = score;
+            }
+
+            alpha = Math.max(alpha, score);
+            if (alpha >= beta) {
+                break; // Beta cut-off
+            }
+        }
+        
+        this.memoCache.set(cacheKey, maxScore);
+        return maxScore;
+    }
+
+    /**
+     * Count the number of pieces for each player on the board.
+     * and return the difference between the player's pieces and the opponent's pieces.
+     */
+    evaluate(board, color) {
+        let opp = this.opponent(color);
+        let matrix = board.board;
+        let score = 0;
+        let rows = matrix.length;
+        let cols = matrix[0].length;
+        // Sum weights for all pieces
+        for (let i = 0; i < rows; i++) {
+            for (let j = 0; j < cols; j++) {
+                if (matrix[i][j] === color) {
+                    score += this.weight_grid[i][j]; // Add weight for player's piece
+                } else if (matrix[i][j] === opp) {
+                    score -= this.weight_grid[i][j]; // Subtract weight for opponent's piece
+                }
+            }
+        }
+        
+        const myMoves = board.valid_moves(color).length;
+        const oppMoves = board.valid_moves(opp).length;
+        //console.log("My moves:", myMoves, "Opponent moves:", oppMoves);
+        const mobilityWeight = 5 * Math.max(1, Math.max(rows, cols) / 4);
+        score += mobilityWeight * (myMoves - oppMoves); // Mobility bonus, scaled by board size
+        //score += 1*(myMoves - oppMoves); // Mobility bonus
+        
+        return score;
+    }
+
+    //Simulacion básica a través de los mismos metodos del objeto Board, clonando tablero y moviendo la pieza.
+    /**
+     * Simulates a move on the board by cloning it and applying the move.
+     * @param {Board} board - The current board state.
+     * @param {Object} move - The move to simulate, with properties x and y.
+     * @param {string} color - The color of the player making the move.
+     * @returns {Board} - A new board state after the simulated move.
+     */
+    simulateMove(board, move, color) {
+        let newBoard = board.clone();
+        newBoard.move(move.x, move.y, color);
+        return newBoard;
+    }
+
+    opponent(color) {
+        return color === 'B' ? 'W' : 'B';
+    }
+}
+
 // Historic ordering to improve alpha-beta pruning efficiency
 class TuringianosAgentV8 extends Agent{
     constructor(){
@@ -885,8 +1492,10 @@ class TuringianosAgentV10 extends Agent{
         console.log("Initializing agent again");
         this.turns = 0; // Reset turns
         this.current_color = color; // Reset current color
-        this.depth = 5; // Reset depth
         this.weight_grid = this.generateWeightGrid(board); // Generate weight grid for the first time
+        this.boardSize = {rows: board.board.length, cols: board.board[0].length};
+        //console.log("Board size:", this.boardSize);
+
         // Memoization cache
         this.memoCache = new Map();
         this.historyTable = {}; // Format: { "i,j": score }
@@ -928,6 +1537,40 @@ class TuringianosAgentV10 extends Agent{
             grid.push(prow);
         }
         return grid
+    }
+
+    evaluationWeights(board) {
+        const totalCells = board.board.length * board.board[0].length;
+        const filled = this.turns;
+        const ratio = filled / totalCells;
+
+        const isLargeBoard = totalCells > 100;
+
+        if (ratio < 0.3) { // Opening
+            return {
+                corner: isLargeBoard ? 6 : 10,
+                edge: isLargeBoard ? 4 : 6,
+                mobility: 2,
+                weight: 2,    // Tu grilla de pesos
+                pieces: 1
+            };
+        } else if (ratio > 0.7) { // Endgame
+            return {
+                corner: 15,
+                edge: 5,
+                mobility: 3,
+                weight: 1,
+                pieces: 2
+            };
+        } else { // Midgame
+            return {
+                corner: 10,
+                edge: 5,
+                mobility: 3,
+                weight: 1.5,
+                pieces: 1.5
+            };
+        }
     }
 
     /**
@@ -1007,6 +1650,14 @@ class TuringianosAgentV10 extends Agent{
         this.turns += 1 // Add 1 to the turn, usefull to guess if we are in early, mid or late game
         // use esos turnos menos el total de casillas posibles para saber el estado del juego
 
+        const boardRows = board.board.length;
+        const boardCols = board.board[0].length;
+
+        if (!this.boardSize || this.boardSize.rows !== boardRows || this.boardSize.cols !== boardCols) {
+            console.log("Board size changed — reinitializing agent.");
+            this.initialize_agent(color, board, time_left);
+        }
+
         if (this.current_color != color){
             this.initialize_agent(color,board, time_left);
         }
@@ -1034,9 +1685,9 @@ class TuringianosAgentV10 extends Agent{
 
         const gamePhase = this.getGamePhase(board);
 
-        if (time_left < 100) {
+        if (time_left < 30) {
             // Tiempo crítico
-            this.depth = 0;
+            return moves[Math.floor(moves.length * Math.random())];
         } else {
             if (gamePhase === 'opening') {
                 this.depth = 0;
@@ -1072,7 +1723,7 @@ class TuringianosAgentV10 extends Agent{
 
     getGamePhase(board) {
         const totalCells = board.board.length * board.board[0].length;
-        console.log('Total cells: ', totalCells);
+        //console.log('Total cells: ', totalCells);
         let filled = 0;
         for (let row of board.board) {
             for (let cell of row) {
@@ -1080,7 +1731,7 @@ class TuringianosAgentV10 extends Agent{
             }
         }
         const ratio = filled / totalCells;
-        console.log('Filled cells: ', filled, ' Ratio: ', ratio);
+        //console.log('Filled cells: ', filled, ' Ratio: ', ratio);
         if (ratio < 0.3) return 'opening';
         if (ratio > 0.7) return 'endgame';
         return 'midgame';
@@ -1255,47 +1906,63 @@ class TuringianosAgentV10 extends Agent{
         return maxScore;
     }
 
-    /**
-     * Count the number of pieces for each player on the board.
-     * and return the difference between the player's pieces and the opponent's pieces.
-     */
     evaluate(board, color) {
-        let opp = this.opponent(color);
-        let matrix = board.board;
-        let score = 0;
-        let rows = matrix.length;
-        let cols = matrix[0].length;
-        let myPieces = 0;
-        let oppPieces = 0;
-        let myWeight = 0;
-        let oppWeight = 0;
-        // Sum weights for all pieces
+        const opp = this.opponent(color);
+        const matrix = board.board;
+        const rows = matrix.length;
+        const cols = matrix[0].length;
+
+        let myPieces = 0, oppPieces = 0;
+        let myWeight = 0, oppWeight = 0;
+        let myCorners = 0, oppCorners = 0;
+        let myEdges = 0, oppEdges = 0;
+
+        const weights = this.evaluationWeights(board);
+
+        // Identificar esquinas
+        const corners = [
+            [0, 0], [0, cols - 1],
+            [rows - 1, 0], [rows - 1, cols - 1]
+        ];
+
         for (let i = 0; i < rows; i++) {
             for (let j = 0; j < cols; j++) {
-                if (matrix[i][j] === color) {
-                    myWeight += this.weight_grid[i][j]; // Add weight for player's piece
-                    myPieces += 1;
-                } else if (matrix[i][j] === opp) {
-                    oppWeight += this.weight_grid[i][j]; // Subtract weight for opponent's piece
-                    oppPieces += 1;
+                const cell = matrix[i][j];
+                if (cell === color) {
+                    myPieces++;
+                    myWeight += this.weight_grid[i][j];
+                    if (i === 0 || i === rows - 1 || j === 0 || j === cols - 1) {
+                        myEdges++;
+                    }
+                } else if (cell === opp) {
+                    oppPieces++;
+                    oppWeight += this.weight_grid[i][j];
+                    if (i === 0 || i === rows - 1 || j === 0 || j === cols - 1) {
+                        oppEdges++;
+                    }
                 }
             }
         }
-        
-        const myMoves = board.valid_moves(color).length;
-        const oppMoves = board.valid_moves(opp).length;
-        const mobilityWeight = 0.25;
-        const piecesWeigth = 1.25; // TODO cambiar este peso segun tamanio grilla
-        
-        const gridWeight = Math.min(0.1, 1 - (this.turns/100)); // Todo mismo q arriba, aca con el tiempo pesa menos tomar una esquina
-        score += mobilityWeight * (myMoves - oppMoves); // Mobility bonus, scaled by board size
-        score += piecesWeigth * (myPieces - oppPieces); // Pieces weight, scaled by turns
-        score += gridWeight * (myWeight - oppWeight);
 
-        
+        // Contar esquinas
+        for (const [i, j] of corners) {
+            if (matrix[i][j] === color) myCorners++;
+            else if (matrix[i][j] === opp) oppCorners++;
+        }
+
+        const mobility = board.valid_moves(color).length - board.valid_moves(opp).length;
+
+        let score = 0;
+        score += weights.corner * (myCorners - oppCorners);
+        score += weights.edge * (myEdges - oppEdges);
+        score += weights.mobility * mobility;
+        score += weights.weight * (myWeight - oppWeight);
+        score += weights.pieces * (myPieces - oppPieces);
+
         return score;
     }
 
+   
     //Simulacion básica a través de los mismos metodos del objeto Board, clonando tablero y moviendo la pieza.
     /**
      * Simulates a move on the board by cloning it and applying the move.
