@@ -1539,38 +1539,6 @@ class TuringianosAgentV10 extends Agent{
         return grid
     }
 
-    evaluationWeights(board) {
-        const totalCells = board.board.length * board.board[0].length;
-        const filled = this.turns;
-        const ratio = filled / totalCells; // Percentage of filled cells
-
-        if (ratio < 0.3) { // Opening
-            return {
-                corner: totalCells > 90 ? 6 : 10,
-                edge: totalCells > 90 ? 4 : 6,
-                mobility: 2,
-                weight: 2,
-                pieces: 1
-            };
-        } else if (ratio > 0.7) { // Endgame
-            return {
-                corner: 15,
-                edge: 5,
-                mobility: 3,
-                weight: 1,
-                pieces: 2
-            };
-        } else { // Midgame
-            return {
-                corner: 10,
-                edge: 5,
-                mobility: 3,
-                weight: 1.5,
-                pieces: 1.5
-            };
-        }
-    }
-
     /**
      * Generates a weight grid for any board size (square or rectangular).
      * Values:
@@ -1717,13 +1685,7 @@ class TuringianosAgentV10 extends Agent{
 
     gamePhase(board) {
         const totalCells = board.board.length * board.board[0].length;
-        let filled = 0;
-        for (let row of board.board) {
-            for (let cell of row) {
-                if (cell !== ' ') filled++;
-            }
-        }
-        const ratio = filled / totalCells;
+        const ratio = this.turns / totalCells;
         if (ratio < 0.35) return 0;
         if (ratio > 0.65) return 2;
         return 1;
@@ -1907,7 +1869,23 @@ class TuringianosAgentV10 extends Agent{
         let myPieces = 0, oppPieces = 0;
         let myWeight = 0, oppWeight = 0;
 
-        const weights = this.evaluationWeights(board);
+        
+        let mobilityWeight = 2;
+        let gridWeight = 1;
+        let piecesWeight = 1;
+
+        // Adjust weights based on the game phase
+        const gamePhase = this.gamePhase(board);
+        if (gamePhase == 1) {
+            mobilityWeight = 3;
+            gridWeight = 1.5;
+            piecesWeight = 1.5;
+        }
+        if (gamePhase == 2){
+            mobilityWeight = 3;
+            gridWeight = 1;
+            piecesWeight = 2;
+        }
 
         for (let i = 0; i < rows; i++) {
             for (let j = 0; j < cols; j++) {
@@ -1925,9 +1903,9 @@ class TuringianosAgentV10 extends Agent{
         const mobility = board.valid_moves(color).length - board.valid_moves(opp).length;
 
         let score = 0;
-        score += weights.mobility * mobility;
-        score += weights.weight * (myWeight - oppWeight);
-        score += weights.pieces * (myPieces - oppPieces);
+        score += mobilityWeight * mobility;
+        score += gridWeight * (myWeight - oppWeight);
+        score += piecesWeight * (myPieces - oppPieces);
 
         return score;
     }
