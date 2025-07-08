@@ -1542,16 +1542,14 @@ class TuringianosAgentV10 extends Agent{
     evaluationWeights(board) {
         const totalCells = board.board.length * board.board[0].length;
         const filled = this.turns;
-        const ratio = filled / totalCells;
-
-        const isLargeBoard = totalCells > 100;
+        const ratio = filled / totalCells; // Percentage of filled cells
 
         if (ratio < 0.3) { // Opening
             return {
-                corner: isLargeBoard ? 6 : 10,
-                edge: isLargeBoard ? 4 : 6,
+                corner: totalCells > 90 ? 6 : 10,
+                edge: totalCells > 90 ? 4 : 6,
                 mobility: 2,
-                weight: 2,    // Tu grilla de pesos
+                weight: 2,
                 pieces: 1
             };
         } else if (ratio > 0.7) { // Endgame
@@ -1588,42 +1586,39 @@ class TuringianosAgentV10 extends Agent{
         // Recorre la matriz y cuenta las piezas del jugador y del oponente
         let rows = matrix.length;
         let cols = matrix[0].length;
-        const maxDimension = Math.max(rows, cols);
         let grid = Array.from({ length: rows }, () => Array(cols).fill(0)); // Initialize grid with ones
-        // Dynamic edge value (scales with board size)
-        const baseEdgeValue = 1;
-        const scaledEdgeValue = baseEdgeValue + Math.floor(Math.max(0, maxDimension - 10)) * 0.25;
-        const edgeValue = Math.round(scaledEdgeValue+1); // Round to integer
-        const scale = Math.max(1,maxDimension/10); // Scale factor for edge values
+        const edgeValue = 5
+        const corner = 15
 
         const corners = [
             [0, 0], [0, cols - 1],
             [rows - 1, 0], [rows - 1, cols - 1]
         ];
+
         for (let k = 0; k < corners.length; k++) {
             const i = corners[k][0];
             const j = corners[k][1];
-            grid[i][j] = 50 + 5 * scale;
+            grid[i][j] = corner;
         }
 
         // X-Squares (always -5)
         for (let k = 0; k < corners.length; k++) {
             const i = corners[k][0];
             const j = corners[k][1];
-            if (i > 0 && j > 0) grid[i - 1][j - 1] = -5 - 1 * scale;
-            if (i > 0 && j < cols - 1) grid[i - 1][j + 1] = -5 - 1 * scale;
-            if (i < rows - 1 && j > 0) grid[i + 1][j - 1] = -5 - 1 * scale;
-            if (i < rows - 1 && j < cols - 1) grid[i + 1][j + 1] = -5 - 1 * scale;
+            if (i > 0 && j > 0) grid[i - 1][j - 1] = -3
+            if (i > 0 && j < cols - 1) grid[i - 1][j + 1] = -3
+            if (i < rows - 1 && j > 0) grid[i + 1][j - 1] = -3
+            if (i < rows - 1 && j < cols - 1) grid[i + 1][j + 1] = -3
         }
 
         // C-Squares (always -3)
         for (let k = 0; k < corners.length; k++) {
             const i = corners[k][0];
             const j = corners[k][1];
-            if (i > 0) grid[i - 1][j] = -5 - 1 * scale;
-            if (i < rows - 1) grid[i + 1][j] = -5 - 1 * scale;
-            if (j > 0) grid[i][j - 1] = -5 - 1 * scale;
-            if (j < cols - 1) grid[i][j + 1] = -5 - 1 * scale;
+            if (i > 0) grid[i - 1][j] = -3
+            if (i < rows - 1) grid[i + 1][j] = -3
+            if (j > 0) grid[i][j - 1] = -3
+            if (j < cols - 1) grid[i][j + 1] = -3
         }
 
 
@@ -1632,7 +1627,7 @@ class TuringianosAgentV10 extends Agent{
             for (let j = 0; j < cols; j++) {
                 if (grid[i][j] !== 0) continue; // Skip assigned squares
                 if (i === 0 || i === rows - 1 || j === 0 || j === cols - 1) {
-                    grid[i][j] = edgeValue; // Dynamic edge weight
+                    grid[i][j] = edgeValue;
                 }
             }
         }
@@ -1647,8 +1642,7 @@ class TuringianosAgentV10 extends Agent{
         var board = percept['board'] // Gets the current board's position
         var moves = board.valid_moves(color)
         var time_left = color == 'W' ? wtime : btime
-        this.turns += 1 // Add 1 to the turn, usefull to guess if we are in early, mid or late game
-        // use esos turnos menos el total de casillas posibles para saber el estado del juego
+        this.turns += 1
 
         const boardRows = board.board.length;
         const boardCols = board.board[0].length;
@@ -1683,17 +1677,17 @@ class TuringianosAgentV10 extends Agent{
         this.total_time = time_left;
         }
 
-        const gamePhase = this.getGamePhase(board);
+        const gamePhase = this.gamePhase(board);
 
         if (time_left < 30) {
-            // Tiempo crítico
+            // If we have no time left, go full random to avoid losing by timeout
             return moves[Math.floor(moves.length * Math.random())];
         } else {
-            if (gamePhase === 'opening') {
+            if (gamePhase === 0) {
                 this.depth = 0;
-            } else if (gamePhase === 'midgame') {
+            } else if (gamePhase === 1) {
                 this.depth = 1;
-            } else if (gamePhase === 'endgame') {
+            } else if (gamePhase === 2) {
                 this.depth = 2;
             }
         }
@@ -1721,9 +1715,8 @@ class TuringianosAgentV10 extends Agent{
         return {'x': bestMove.x, 'y': bestMove.y};
     }
 
-    getGamePhase(board) {
+    gamePhase(board) {
         const totalCells = board.board.length * board.board[0].length;
-        //console.log('Total cells: ', totalCells);
         let filled = 0;
         for (let row of board.board) {
             for (let cell of row) {
@@ -1731,10 +1724,9 @@ class TuringianosAgentV10 extends Agent{
             }
         }
         const ratio = filled / totalCells;
-        //console.log('Filled cells: ', filled, ' Ratio: ', ratio);
-        if (ratio < 0.3) return 'opening';
-        if (ratio > 0.7) return 'endgame';
-        return 'midgame';
+        if (ratio < 0.35) return 0;
+        if (ratio > 0.65) return 2;
+        return 1;
     }
 
     // Rotate a matrix 90 degrees clockwise
@@ -1914,16 +1906,8 @@ class TuringianosAgentV10 extends Agent{
 
         let myPieces = 0, oppPieces = 0;
         let myWeight = 0, oppWeight = 0;
-        let myCorners = 0, oppCorners = 0;
-        let myEdges = 0, oppEdges = 0;
 
         const weights = this.evaluationWeights(board);
-
-        // Identificar esquinas
-        const corners = [
-            [0, 0], [0, cols - 1],
-            [rows - 1, 0], [rows - 1, cols - 1]
-        ];
 
         for (let i = 0; i < rows; i++) {
             for (let j = 0; j < cols; j++) {
@@ -1931,30 +1915,16 @@ class TuringianosAgentV10 extends Agent{
                 if (cell === color) {
                     myPieces++;
                     myWeight += this.weight_grid[i][j];
-                    if (i === 0 || i === rows - 1 || j === 0 || j === cols - 1) {
-                        myEdges++;
-                    }
                 } else if (cell === opp) {
                     oppPieces++;
                     oppWeight += this.weight_grid[i][j];
-                    if (i === 0 || i === rows - 1 || j === 0 || j === cols - 1) {
-                        oppEdges++;
-                    }
                 }
             }
-        }
-
-        // Contar esquinas
-        for (const [i, j] of corners) {
-            if (matrix[i][j] === color) myCorners++;
-            else if (matrix[i][j] === opp) oppCorners++;
         }
 
         const mobility = board.valid_moves(color).length - board.valid_moves(opp).length;
 
         let score = 0;
-        score += weights.corner * (myCorners - oppCorners);
-        score += weights.edge * (myEdges - oppEdges);
         score += weights.mobility * mobility;
         score += weights.weight * (myWeight - oppWeight);
         score += weights.pieces * (myPieces - oppPieces);
@@ -1962,7 +1932,6 @@ class TuringianosAgentV10 extends Agent{
         return score;
     }
 
-   
     //Simulacion básica a través de los mismos metodos del objeto Board, clonando tablero y moviendo la pieza.
     /**
      * Simulates a move on the board by cloning it and applying the move.
