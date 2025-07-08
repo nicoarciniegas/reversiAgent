@@ -1495,6 +1495,7 @@ class TuringianosAgentV10 extends Agent{
         this.weight_grid = this.generateWeightGrid(board); // Generate weight grid for the first time
         this.boardSize = {rows: board.board.length, cols: board.board[0].length};
         //console.log("Board size:", this.boardSize);
+        console.log("Weight grid:", this.weight_grid);
 
         // Memoization cache
         this.memoCache = new Map();
@@ -1659,8 +1660,6 @@ class TuringianosAgentV10 extends Agent{
                 this.depth = 2;
             }
         }
-
-
         this.timeLimit = Date.now() + this.maxTime * this.depth**2;
 
         let bestScore = -Infinity;
@@ -1671,7 +1670,6 @@ class TuringianosAgentV10 extends Agent{
         }
 
         for (let move of moves) {
-            //console.log('move object',move, 'move i', move.y,'move j', move.x);
             let newBoard = this.simulateMove(board, move, color);
             let score = -this.negamax(newBoard, this.opponent(color), this.depth,-Infinity, Infinity);
             if (score > bestScore) {
@@ -1795,7 +1793,6 @@ class TuringianosAgentV10 extends Agent{
 
     negamax(board, color, depth, alpha, beta) {
         // Uses the new, faster hashing function for the cache key.
-        
         const cachesKeys = this.getBoardHashes(board,color, depth) ;
         
         for (let i = 0; i < cachesKeys.length; i++) {
@@ -1804,11 +1801,10 @@ class TuringianosAgentV10 extends Agent{
                 return this.memoCache.get(cachesKeys[i]);
             }   
         }
-
+        
         let moves = board.valid_moves(color);
         if (depth === 0 || moves.length === 0) {
             const score = this.evaluate(board, color);
-            
             for (let i = 0; i < cachesKeys.length; i++) {
                 this.memoCache.set(cachesKeys[i], score);
             }
@@ -1868,8 +1864,6 @@ class TuringianosAgentV10 extends Agent{
 
         let myPieces = 0, oppPieces = 0;
         let myWeight = 0, oppWeight = 0;
-
-        
         let mobilityWeight = 2;
         let gridWeight = 1;
         let piecesWeight = 1;
@@ -1877,8 +1871,8 @@ class TuringianosAgentV10 extends Agent{
         // Adjust weights based on the game phase
         const gamePhase = this.gamePhase(board);
         if (gamePhase == 1) {
-            mobilityWeight = 3;
-            gridWeight = 1.5;
+            mobilityWeight = 3.5;
+            gridWeight = 2;
             piecesWeight = 1.5;
         }
         if (gamePhase == 2){
@@ -1906,7 +1900,6 @@ class TuringianosAgentV10 extends Agent{
         score += mobilityWeight * mobility;
         score += gridWeight * (myWeight - oppWeight);
         score += piecesWeight * (myPieces - oppPieces);
-
         return score;
     }
 
